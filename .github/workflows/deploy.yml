@@ -1,0 +1,49 @@
+name: Deploy Tomcat App to EC2
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build WAR
+        run: mvn clean package -DskipTests
+
+      - name: Check target files
+        run: ls -lh target/
+
+      - name: Copy WAR to EC2
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: target/*.war
+          target: /home/ubuntu/
+
+      - name: Deploy in Tomcat
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ubuntu/tomcat/bin
+            ./shutdown.sh
+            sleep 10
+            rm -rf /home/ubuntu/tomcat/webapps/*
+            cp /home/ubuntu/target/*.war /home/ubuntu/tomcat/webapps/ROOT.war
+            ./startup.sh
