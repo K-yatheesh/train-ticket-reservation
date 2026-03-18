@@ -22,7 +22,10 @@ jobs:
       - name: Build Project
         run: mvn clean install
 
+      - name: Install Snyk
+        run: npm install -g snyk
+
       - name: Run Snyk Test
-        uses: snyk/actions/maven@master
+        run: snyk test
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
