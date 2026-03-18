@@ -5,6 +5,7 @@ on:
     branches:
       - main
 
+
 jobs:
   snyk-scan:
     runs-on: ubuntu-latest
