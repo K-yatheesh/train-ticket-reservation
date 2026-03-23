@@ -44,15 +44,9 @@ jobs:
           </settings>
           EOF
 
-      # ✅ Build Step
-      - name: Validate
-        run: mvn validate
-
-      - name: Compile
-        run: mvn compile
-
-      - name: Test
-        run: mvn test
+      # ✅ Build
+      - name: Build
+        run: mvn clean install
 
       # ✅ SonarQube Scan
       - name: SonarQube Scan
@@ -62,52 +56,44 @@ jobs:
             -Dsonar.host.url=${{ secrets.SONARQUBE_HOST }} \
             -Dsonar.login=${{ secrets.SONARQUBE_TOKEN }}
 
-      # ✅ Setup Node for Snyk
-      - name: Setup Node.js
+      # ✅ Snyk
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      # ✅ Install Snyk
       - name: Install Snyk
         run: npm install -g snyk
 
-      # ✅ Authenticate Snyk
-      - name: Authenticate Snyk
-        run: snyk auth ${{ secrets.SNYK_TOKEN }}
-
-      # ✅ Run Snyk Scan
-      - name: Run Snyk Test
+      - name: Snyk Test
         run: snyk test || true
-
-      # ✅ Package WAR
-      - name: Package
-        run: mvn clean package -DskipTests
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
       # ✅ Upload to Nexus
-      - name: Upload WAR to Nexus
+      - name: Deploy to Nexus
         run: mvn deploy -DskipTests
 
-      - name: Deploy in Tomcat (from Nexus)
-  uses: appleboy/ssh-action@master
-  with:
-    host: ${{ secrets.EC2_HOST }}
-    username: ubuntu
-    key: ${{ secrets.EC2_SSH_KEY }}
-    script: |
-      cd /home/ubuntu
+      # ✅ Deploy to Tomcat (FIXED)
+      - name: Deploy in Tomcat
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ubuntu
 
-      # ✅ Download actual WAR (using authentication)
-      wget --user=${{ secrets.NEXUS_USERNAME }} --password=${{ secrets.NEXUS_PASSWORD }} \
-      -O app.war \
-      "http://13.127.61.77:8081/repository/maven-snapshots/TrainBook/TrainBook/1.0.0-SNAPSHOT/TrainBook-1.0.0-SNAPSHOT.war"
+            wget --user=${{ secrets.NEXUS_USERNAME }} --password=${{ secrets.NEXUS_PASSWORD }} \
+            -O app.war \
+            "http://13.127.61.77:8081/repository/maven-snapshots/TrainBook/TrainBook/1.0.0-SNAPSHOT/TrainBook-1.0.0-SNAPSHOT.war"
 
-      cd /home/ubuntu/apache-tomcat-9.0.98/bin
-      ./shutdown.sh || true
-      sleep 10
+            cd /home/ubuntu/apache-tomcat-9.0.98/bin
+            ./shutdown.sh || true
+            sleep 10
 
-      rm -rf /home/ubuntu/apache-tomcat-9.0.98/webapps/*
+            rm -rf /home/ubuntu/apache-tomcat-9.0.98/webapps/*
 
-      cp /home/ubuntu/app.war /home/ubuntu/apache-tomcat-9.0.98/webapps/ROOT.war
+            cp /home/ubuntu/app.war /home/ubuntu/apache-tomcat-9.0.98/webapps/ROOT.war
 
-      ./startup.sh
+            ./startup.sh
