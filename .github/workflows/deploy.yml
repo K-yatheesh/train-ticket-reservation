@@ -6,30 +6,30 @@ on:
       - main
 
 jobs:
-  build-sonar-snyk-nexus-deploy:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # ✅ Checkout
+      # Checkout
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ✅ Setup Java
+      # Java setup
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # ✅ Cache Maven
-      - name: Cache Maven packages
+      # Maven cache
+      - name: Cache Maven
         uses: actions/cache@v4
         with:
           path: ~/.m2
           key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
 
-      # ✅ Configure Maven for Nexus
-      - name: Configure Maven for Nexus
+      # Nexus config
+      - name: Configure Maven
         run: |
           mkdir -p ~/.m2
           cat <<EOF > ~/.m2/settings.xml
@@ -44,19 +44,19 @@ jobs:
           </settings>
           EOF
 
-      # ✅ Build
+      # Build
       - name: Build
         run: mvn clean install
 
-      # ✅ SonarQube Scan
-      - name: SonarQube Scan
+      # Sonar
+      - name: Sonar Scan
         run: |
           mvn sonar:sonar \
             -Dsonar.projectKey=Demo-Tomcat \
             -Dsonar.host.url=${{ secrets.SONARQUBE_HOST }} \
             -Dsonar.login=${{ secrets.SONARQUBE_TOKEN }}
 
-      # ✅ Snyk
+      # Snyk
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -65,43 +65,42 @@ jobs:
       - name: Install Snyk
         run: npm install -g snyk
 
-      - name: Snyk Test
+      - name: Run Snyk
         run: snyk test || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
-      # ✅ Upload to Nexus
-      - name: Deploy to Nexus
+      # Deploy to Nexus
+      - name: Upload to Nexus
         run: mvn deploy -DskipTests
 
-      # ✅ Deploy to Tomcat (FIXED)
-      - name: Deploy in Tomcat
-  uses: appleboy/ssh-action@master
-  with:
-    host: ${{ secrets.EC2_HOST }}
-    username: ubuntu
-    key: ${{ secrets.EC2_SSH_KEY }}
-    script: |
-      cd /home/ubuntu
+      # Deploy to Tomcat (FINAL FIX)
+      - name: Deploy to Tomcat
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ubuntu
 
-      # ✅ Download real WAR using metadata (IMPORTANT FIX)
-      META=$(curl -u ${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }} -s \
-      http://13.127.61.77:8081/repository/maven-snapshots/TrainBook/TrainBook/1.0.0-SNAPSHOT/maven-metadata.xml)
+            META=$(curl -u ${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }} -s \
+            http://13.127.61.77:8081/repository/maven-snapshots/TrainBook/TrainBook/1.0.0-SNAPSHOT/maven-metadata.xml)
 
-      VERSION=$(echo "$META" | grep -oP '(?<=<value>).*?(?=</value>)' | tail -1)
+            VERSION=$(echo "$META" | grep -oP '(?<=<value>).*?(?=</value>)' | tail -1)
 
-      echo "Downloading version: $VERSION"
+            echo "Downloading version: $VERSION"
 
-      wget --user=${{ secrets.NEXUS_USERNAME }} --password=${{ secrets.NEXUS_PASSWORD }} \
-      -O app.war \
-      http://13.127.61.77:8081/repository/maven-snapshots/TrainBook/TrainBook/1.0.0-SNAPSHOT/TrainBook-$VERSION.war
+            wget --user=${{ secrets.NEXUS_USERNAME }} --password=${{ secrets.NEXUS_PASSWORD }} \
+            -O app.war \
+            http://13.127.61.77:8081/repository/maven-snapshots/TrainBook/TrainBook/1.0.0-SNAPSHOT/TrainBook-$VERSION.war
 
-      cd /home/ubuntu/apache-tomcat-9.0.98/bin
-      ./shutdown.sh || true
-      sleep 10
+            cd /home/ubuntu/apache-tomcat-9.0.98/bin
+            ./shutdown.sh || true
+            sleep 10
 
-      rm -rf /home/ubuntu/apache-tomcat-9.0.98/webapps/*
+            rm -rf /home/ubuntu/apache-tomcat-9.0.98/webapps/*
 
-      cp /home/ubuntu/app.war /home/ubuntu/apache-tomcat-9.0.98/webapps/ROOT.war
+            cp /home/ubuntu/app.war /home/ubuntu/apache-tomcat-9.0.98/webapps/ROOT.war
 
-      ./startup.sh
+            ./startup.sh
